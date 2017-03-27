@@ -1,4 +1,4 @@
-defmodule Socks do
+defmodule Socks.Server do
   @moduledoc """
   A Socks5 server.
 
@@ -8,7 +8,7 @@ defmodule Socks do
 
   ## Examples
 
-      $ mix run -e Socks.start
+      $ mix run -e Socks.Server.start
       $ # resolve hostname from local
       $ curl -v --proxy 'socks5://localhost' google.com
       $ # resolve hostname from remote

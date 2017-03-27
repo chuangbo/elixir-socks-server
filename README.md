@@ -8,7 +8,7 @@ It's my personal practice project of learning Elixir. Use at your own risks.
 
 ```sh
 $ # Start the server
-$ mix run -e Socks.start
+$ mix run -e Socks.Server.start
 $ # resolve hostname from local
 $ curl -v --proxy 'socks5://localhost' google.com
 $ # resolve hostname from remote
