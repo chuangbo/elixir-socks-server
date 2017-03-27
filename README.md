@@ -23,6 +23,7 @@ $ curl -v --proxy 'socks5h://localhost' google.com
 - How to run it properly?
 - How to use Application / Task / Supervisor? How to spawn two forwarding processes for each client properly?
 - How to handle errors properly?
+- How to close connection properly?
 - Specs?
 - Tests?
 - Connection pool?
