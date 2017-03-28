@@ -74,16 +74,12 @@ defmodule Socks.Server do
   # Handshake for correct socks5 client
   defp handshake(client) do
     # Logger.debug "Start handshake: #{inspect(client)}"
-    case client |> Socket.Stream.recv(2) do
-      {:ok, << 5, nmethod >>} ->
-        case client |> Socket.Stream.recv(nmethod) do
-          {:ok, << methods :: binary >>} ->
-            # Only support no auth: 0
-            true = methods |> to_charlist |> Enum.member?(0)
-            client |> Socket.Stream.send!(<< 5, 0 >>)
-          _ = error -> error
-        end
-      _ -> :error
+    case client |> Socket.Stream.recv do
+      {:ok, << 5, nmethod :: integer-size(8), methods :: bytes-size(nmethod) >>} ->
+        # Only support no auth: 0
+        true = methods |> to_charlist |> Enum.member?(0)
+        client |> Socket.Stream.send!(<< 5, 0 >>)
+      _ = error -> error
     end
   end
 
@@ -119,19 +115,16 @@ defmodule Socks.Server do
 
   # Connect to hostname, port target
   defp connect_hostname_port(client) do
-    case client |> Socket.Stream.recv(1) do
-      {:ok, << length >>} ->
-        case client |> Socket.Stream.recv(length + 2) do
-          {:ok, <<hostname :: bytes-size(length), port :: size(16) >>} ->
-            Logger.debug "Target: #{inspect(client)} #{hostname}:#{port}"
-            case Socket.TCP.connect(hostname, port) do
-              {:ok, target} ->
-                client |> Socket.Stream.send(<< 5, 0, 0, 3, length >> <> hostname <> << port :: size(16) >>)
-                {:ok, target}
-              {:error, :econnrefused} = error ->
-                client |> Socket.Stream.send(<< 5, 5, 0, 3, length >> <> hostname <> << port :: size(16) >>)
-                error
-            end
+    case client |> Socket.Stream.recv do
+      {:ok, << length :: integer-size(8), hostname :: bytes-size(length), port :: size(16) >>} ->
+        Logger.debug "Target: #{inspect(client)} #{hostname}:#{port}"
+        case Socket.TCP.connect(hostname, port) do
+          {:ok, target} ->
+            client |> Socket.Stream.send(<< 5, 0, 0, 3, length >> <> hostname <> << port :: size(16) >>)
+            {:ok, target}
+          {:error, :econnrefused} = error ->
+            client |> Socket.Stream.send(<< 5, 5, 0, 3, length >> <> hostname <> << port :: size(16) >>)
+            error
         end
     end
   end
