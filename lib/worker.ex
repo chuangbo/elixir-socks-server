@@ -1,4 +1,4 @@
-defmodule Socks.Server do
+defmodule SocksServer.Worker do
   @moduledoc """
   A Socks5 server.
 
@@ -8,7 +8,7 @@ defmodule Socks.Server do
 
   ## Examples
 
-      $ mix run -e Socks.Server.start
+      $ mix run --no-halt
       $ # resolve hostname from local
       $ curl -v --proxy 'socks5://localhost' google.com
       $ # resolve hostname from remote
@@ -22,31 +22,23 @@ defmodule Socks.Server do
   @connect_options [:binary, packet: 0, active: false]
 
   @doc """
-  Start the server from giving port.
+  Start the server from giving `port`.
   """
-  def start(port) when is_integer(port) do
-    # :observer.start
-    {:ok, server} = :gen_tcp.listen(port, @listen_options)
-    Logger.info "Listening on #{port}"
-    accept_loop server
-  end
-
-  @doc """
-  Start the server from default port 1080
-  """
-  def start do
-    port = Application.get_env(:socks, :port)
-    start(port)
+  def start_link(port) do
+    {:ok, socket} = :gen_tcp.listen(port, @listen_options)
+    Logger.info "Listening connections on port #{port}"
+    loop_acceptor(socket)
   end
 
   # Accept a new client from a listening socket
-  defp accept_loop(server) do
-    {:ok, client} = :gen_tcp.accept(server)
+  defp loop_acceptor(socket) do
+    {:ok, client} = :gen_tcp.accept(socket)
     Logger.debug "Accept client: #{inspect(client)}"
 
-    Task.start fn -> socks5(client) end
+    {:ok, pid} = Task.Supervisor.start_child(SocksServer.TaskSupervisor, fn -> socks5(client) end)
+    :gen_tcp.controlling_process(client, pid)
 
-    accept_loop(server)
+    loop_acceptor(socket)
   end
 
   # Start the socks5 process: Handshake -> Connect -> Forwarding
@@ -58,12 +50,11 @@ defmodule Socks.Server do
           {:ok, target} ->
             Logger.debug "Connected target #{inspect(target)}"
             # Forward afterward in a separate process
-            Task.start_link fn -> forward(client, target) end
-            # Forward backward
-            # FIXME: it's not in a separate process because I don't know how to do it
-            # Put both forwarding in processes will cause self process finish, which
-            # cause target socket closed
-            forward(target, client)
+            {:ok, pid} = Task.Supervisor.start_child(SocksServer.TaskSupervisor, fn -> forward(client, target) end)
+            :gen_tcp.controlling_process(client, pid)
+            # Forward backward in a separate process
+            {:ok, pid} = Task.Supervisor.start_child(SocksServer.TaskSupervisor, fn -> forward(target, client) end)
+            :gen_tcp.controlling_process(target, pid)
           _ = error ->
             Logger.error "Connect Error: #{inspect(error)}"
             :gen_tcp.close(client)

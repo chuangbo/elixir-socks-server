@@ -8,7 +8,7 @@ It's my personal practice project of learning Elixir. Use at your own risks.
 
 ```sh
 $ # Start the server
-$ mix run -e Socks.Server.start
+$ mix run --no-halt
 $ # resolve hostname from local
 $ curl -v --proxy 'socks5://localhost' google.com
 $ # resolve hostname from remote
@@ -17,7 +17,7 @@ $ curl -v --proxy 'socks5h://localhost' google.com
 
 ## FIXME
 
-**What I havn't figure out yet**
+**What I havn't figured out yet**
 
 - Too many nested cases?
 - How to run it properly?
@@ -29,6 +29,7 @@ $ curl -v --proxy 'socks5h://localhost' google.com
 - Connection pool?
 - Timeout?
 - Proxy to itself?
+- GenServer?
 - ???
 
 ## TODO

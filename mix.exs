@@ -1,8 +1,8 @@
-defmodule Socks.Mixfile do
+defmodule SocksServer.Mixfile do
   use Mix.Project
 
   def project do
-    [app: :socks,
+    [app: :socks_server,
      version: "0.1.0",
      elixir: "~> 1.4",
      build_embedded: Mix.env == :prod,
@@ -15,7 +15,10 @@ defmodule Socks.Mixfile do
   # Type "mix help compile.app" for more information
   def application do
     # Specify extra applications you'll use from Erlang/Elixir
-    [extra_applications: [:logger]]
+    [
+      extra_applications: [:logger],
+      mod: {SocksServer.Application, []},
+    ]
   end
 
   # Dependencies can be Hex packages:

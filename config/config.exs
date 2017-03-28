@@ -10,11 +10,11 @@ use Mix.Config
 
 # You can configure for your application as:
 #
-#     config :socks, key: :value
+#     config :socks_server, key: :value
 #
 # And access this configuration in your application as:
 #
-#     Application.get_env(:socks, :key)
+#     Application.get_env(:socks_server, :key)
 #
 # Or configure a 3rd-party app:
 #
@@ -29,4 +29,4 @@ use Mix.Config
 #
 #     import_config "#{Mix.env}.exs"
 
-config :socks, port: 1080
+config :socks_server, port: 1080
