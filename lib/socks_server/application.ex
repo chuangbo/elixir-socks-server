@@ -14,9 +14,10 @@ defmodule SocksServer.Application do
 
     # Define workers and child supervisors to be supervised
     children = [
+      # General task supervisor
       supervisor(Task.Supervisor, [[name: SocksServer.TaskSupervisor]]),
       # Starts a worker by calling: SocksServer.Worker.start_link(arg1, arg2, arg3)
-      worker(SocksServer.Worker, [port]),
+      worker(Task, [SocksServer.TCP, :listen, [port]]),
     ]
 
     # See http://elixir-lang.org/docs/stable/elixir/Supervisor.html

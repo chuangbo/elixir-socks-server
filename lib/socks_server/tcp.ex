@@ -1,4 +1,4 @@
-defmodule SocksServer.Worker do
+defmodule SocksServer.TCP do
   @moduledoc """
   A Socks5 server.
 
@@ -24,7 +24,7 @@ defmodule SocksServer.Worker do
   @doc """
   Start the server from giving `port`.
   """
-  def start_link(port) do
+  def listen(port) do
     {:ok, socket} = :gen_tcp.listen(port, @listen_options)
     Logger.info "Listening connections on port #{port}"
     loop_acceptor(socket)
@@ -126,22 +126,16 @@ defmodule SocksServer.Worker do
   end
 
   # Forward data between sockets
-  defp forward(from, to) do
-    # Logger.debug "Forward: #{inspect(from)} -> #{inspect(to)}"
-    case :gen_tcp.recv(from, 0) do
-      {:ok, data} when is_binary(data) ->
-        # Logger.debug "Received: #{inspect(data)} #{inspect(from)} forward to #{inspect(to)}"
-        case :gen_tcp.send(to, data) do
-          :ok -> forward(from, to)
-          {:error, :closed} -> :ok
-          _ = error ->
-            Logger.error "Forward Send Error: #{inspect(error)}"
-            error
-        end
-      {:error, :closed} -> :ok
-      _ = error ->
-        Logger.error "Forward Receive Error: #{inspect(error)}"
-        error
+  def forward(from, to) do
+    # Logger.debug("Forward #{inspect(from)} to #{inspect(to)}")
+    sent = with {:ok, data} <- :gen_tcp.recv(from, 0),
+      do: :gen_tcp.send(to, data)
+
+    case sent do
+      :ok -> forward(from, to)
+      _ ->
+        :gen_tcp.close(from)
+        :gen_tcp.close(to)
     end
   end
 end
