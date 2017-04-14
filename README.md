@@ -19,11 +19,11 @@ $ curl -v --proxy 'socks5h://localhost' google.com
 
 **What I havn't figured out yet**
 
-- Too many nested cases?
-- How to run it properly?
-- How to use Application / Task / Supervisor? How to spawn two forwarding processes for each client properly?
-- How to handle errors properly?
-- How to close connection properly?
+- ~~Too many nested cases?~~
+- ~~How to run it properly?~~
+- ~~How to use Application / Task / Supervisor? How to spawn two forwarding processes for each client properly?~~
+- ~~How to handle errors properly?~~
+- ~~How to close connection properly?~~
 - Specs?
 - Tests?
 - Connection pool?
