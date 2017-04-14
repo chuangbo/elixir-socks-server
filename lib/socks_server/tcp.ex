@@ -44,9 +44,9 @@ defmodule SocksServer.TCP do
   # Start the socks5 process: Handshake -> Connect -> Forwarding
   defp socks5(client) do
     client
-      |> handshake()
-      |> connect(client)
-      |> forwarding(client)
+    |> handshake()
+    |> connect(client)
+    |> forwarding(client)
   end
 
   # Handshake for correct socks5 client
@@ -65,9 +65,9 @@ defmodule SocksServer.TCP do
   # Connect to the target which request by the client
   defp connect(:ok, client) do
     client
-      |> :gen_tcp.recv(4)
-      |> get_target_address(client)
-      |> connect_target(client)
+    |> :gen_tcp.recv(4)
+    |> get_target_address(client)
+    |> connect_target(client)
   end
 
   # Forward packets between two sockets
@@ -89,7 +89,6 @@ defmodule SocksServer.TCP do
       _ -> exit(:shutdown)
     end
   end
-
   # client wants to connect a hostname
   # curl -v --proxy 'socks5h://localhost' google.com
   defp get_target_address({:ok, << 5, 1, 0, 3 >>}, client) do
@@ -132,11 +131,10 @@ defmodule SocksServer.TCP do
   # Forward data between sockets
   defp forward(from, to) do
     # Logger.debug("Forward #{inspect(from)} to #{inspect(to)}")
-    sent = with {:ok, data} <- :gen_tcp.recv(from, 0),
-      do: :gen_tcp.send(to, data)
-
-    case sent do
-      :ok -> forward(from, to)
+    with {:ok, data} <- :gen_tcp.recv(from, 0),
+         :ok <- :gen_tcp.send(to, data) do
+      forward(from, to)
+    else
       _ ->
         :gen_tcp.close(from)
         :gen_tcp.close(to)
