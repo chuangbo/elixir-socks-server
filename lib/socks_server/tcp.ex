@@ -33,7 +33,7 @@ defmodule SocksServer.TCP do
   # Accept a new client from a listening socket
   defp loop_acceptor(socket) do
     {:ok, client} = :gen_tcp.accept(socket)
-    Logger.debug "Accept client: #{inspect(client)}"
+    # Logger.debug "Accept client: #{inspect(client)}"
 
     {:ok, pid} = Task.Supervisor.start_child(SocksServer.TaskSupervisor, fn -> socks5(client) end)
     :gen_tcp.controlling_process(client, pid)
@@ -43,26 +43,10 @@ defmodule SocksServer.TCP do
 
   # Start the socks5 process: Handshake -> Connect -> Forwarding
   defp socks5(client) do
-    case handshake(client) do
-      :ok ->
-        Logger.debug "Handshake success #{inspect(client)}"
-        case connect(client) do
-          {:ok, target} ->
-            Logger.debug "Connected target #{inspect(target)}"
-            # Forward afterward in a separate process
-            {:ok, pid} = Task.Supervisor.start_child(SocksServer.TaskSupervisor, fn -> forward(client, target) end)
-            :gen_tcp.controlling_process(client, pid)
-            # Forward backward in a separate process
-            {:ok, pid} = Task.Supervisor.start_child(SocksServer.TaskSupervisor, fn -> forward(target, client) end)
-            :gen_tcp.controlling_process(target, pid)
-          _ = error ->
-            Logger.error "Connect Error: #{inspect(error)}"
-            :gen_tcp.close(client)
-        end
-      _ = error ->
-        Logger.error "Handshake Error: #{inspect(error)}"
-        :gen_tcp.close(client)
-    end
+    client
+      |> handshake()
+      |> connect(client)
+      |> forwarding(client)
   end
 
   # Handshake for correct socks5 client
@@ -73,60 +57,80 @@ defmodule SocksServer.TCP do
         # Only support no auth: 0
         true = methods |> to_charlist |> Enum.member?(0)
         :gen_tcp.send(client, << 5, 0 >>)
-      _ = error -> error
+      _ ->
+        exit(:shutdown)
     end
   end
 
   # Connect to the target which request by the client
-  defp connect(client) do
-    case :gen_tcp.recv(client, 4) do
-      # ipv4
-      {:ok, << 5, 1, 0, 1 >>} -> connect_ipv4(client)
-      # domainname
-      {:ok, << 5, 1, 0, 3 >>} -> connect_hostname_port(client)
-      # ipv6
-      {:ok, << 5, 1, 0, 4 >>} -> {:error, :notsupport}
-      _ = error -> error
-    end
+  defp connect(:ok, client) do
+    client
+      |> :gen_tcp.recv(4)
+      |> get_target_address(client)
+      |> connect_target(client)
   end
 
-  # Connect to ipv4 target
-  defp connect_ipv4(client) do
+  # Forward packets between two sockets
+  defp forwarding(target, client) do
+    # Forward afterward in a separate process
+    {:ok, afterward_pid} = Task.Supervisor.start_child(SocksServer.TaskSupervisor, fn -> forward(client, target) end)
+    :gen_tcp.controlling_process(client, afterward_pid)
+
+    # Forward backward in a separate process
+    {:ok, backward_pid} = Task.Supervisor.start_child(SocksServer.TaskSupervisor, fn -> forward(target, client) end)
+    :gen_tcp.controlling_process(target, backward_pid)
+  end
+
+  # client wants to connect an ipv4 address
+  # curl -v --proxy 'socks5://localhost' google.com
+  defp get_target_address({:ok, << 5, 1, 0, 1 >>}, client) do
     case :gen_tcp.recv(client, 6) do
-      {:ok, << a, b, c, d, port :: size(16) >>} ->
-        address = "#{a}.#{b}.#{c}.#{d}"
-        Logger.debug "Target: #{inspect(client)} #{address}:#{port}"
-        case :gen_tcp.connect({a, b, c, d}, port, @connect_options) do
-          {:ok, target} ->
-            :gen_tcp.send(client, << 5, 0, 0, 1, a, b, c, d, port :: size(16) >>)
-            {:ok, target}
-          {:error, :econnrefused} = error ->
-            :gen_tcp.send(client, << 5, 5, 0, 1, a, b, c, d, port :: size(16) >>)
-            error
-        end
-      _ = error -> error
+      {:ok, << a, b, c, d, port :: size(16) >>} -> {:ok, {a, b, c, d}, port}
+      _ -> exit(:shutdown)
     end
   end
 
-  # Connect to hostname, port target
-  defp connect_hostname_port(client) do
+  # client wants to connect a hostname
+  # curl -v --proxy 'socks5h://localhost' google.com
+  defp get_target_address({:ok, << 5, 1, 0, 3 >>}, client) do
     case :gen_tcp.recv(client, 0) do
       {:ok, << length :: integer-size(8), hostname :: bytes-size(length), port :: size(16) >>} ->
-        Logger.debug "Target: #{inspect(client)} #{hostname}:#{port}"
-        case :gen_tcp.connect(to_charlist(hostname), port, @connect_options) do
-          {:ok, target} ->
-            :gen_tcp.send(client, << 5, 0, 0, 3, length, hostname :: binary, port :: size(16) >>)
-            {:ok, target}
-          {:error, :econnrefused} = error ->
-            :gen_tcp.send(client, << 5, 5, 0, 3, length, hostname :: binary, port :: size(16) >>)
-            error
-        end
-      _ = error -> error
+        {:ok, to_charlist(hostname), port}
+      _ -> exit(:shutdown)
     end
   end
 
+  # client wants to connect a hostname
+  defp get_target_address({:ok, << 5, 1, 0, 4 >>}, _client) do
+    Logger.error("IPv6 not support")
+    exit(:shutdown)
+  end
+
+  defp connect_target({:ok, address, port}, client) do
+    case :gen_tcp.connect(address, port, @connect_options) do
+      {:ok, target} ->
+        reply_connected(client)
+        target
+      {:error, reason} ->
+        reply_connect_error(reason, client)
+    end
+  end
+
+  defp reply_connected(client) do
+    :gen_tcp.send(client, << 5, 0, 0, 1, 0, 0, 0, 0, 0 :: size(16) >>)
+  end
+
+  defp reply_connect_error(reason, client) do
+    flag = reason_to_flag(reason)
+    :gen_tcp.send(client, << 5, flag, 0, 1, 0, 0, 0, 0, 0 :: size(16) >>)
+    exit(:shutdown)
+  end
+
+  defp reason_to_flag(:nxdomain), do: 4
+  defp reason_to_flag(:econnrefused), do: 5
+
   # Forward data between sockets
-  def forward(from, to) do
+  defp forward(from, to) do
     # Logger.debug("Forward #{inspect(from)} to #{inspect(to)}")
     sent = with {:ok, data} <- :gen_tcp.recv(from, 0),
       do: :gen_tcp.send(to, data)
